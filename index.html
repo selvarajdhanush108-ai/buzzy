@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Passenger — Bus Tracker PWA</title>
+  <title>Buzzy — Bus Tracker PWA</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -68,7 +68,7 @@
     <header>
       <div class="brand">
         <div class="logo">B</div>
-        <div class="text">Passenger — Bus Tracker</div>
+        <div class="text">Buzzy — Bus Tracker</div>
       </div>
       <div class="top-actions">
         <button id="notifBtn" class="btn">Enable Notifications</button>
@@ -143,7 +143,7 @@
 /* =========================
    CONFIG - update DEFAULT_SERVER if your server IP is different
    ========================= */
-const DEFAULT_SERVER = 'http://10.220.147.94:3000'; // <<-- CHANGE if needed
+const DEFAULT_SERVER = 'https://buzzy-server-final.onrender.com'; // <<-- CHANGE if needed
 const NOTIFY_DEBOUNCE_MS = 10 * 60 * 1000; // 10 minutes per bus for near-home alerts
 const NEAR_RADIUS_M = 2000; // 2 km
 const VERY_CLOSE_M = 25; // buzzer threshold
@@ -423,3 +423,4 @@ window.addEventListener('load', ()=>{
   </script>
 </body>
 </html>
+
