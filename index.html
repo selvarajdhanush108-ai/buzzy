@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Passenger — Bus Tracker PWA</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    :root{
+      --primary:#1e88e5;
+      --bg:#fbfdff;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --accent:#ffb300;
+      --danger:#d32f2f;
+      --glass: rgba(255,255,255,0.85);
+      --shadow: 0 6px 18px rgba(22,28,37,0.08);
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body,#app{height:100%;margin:0;background:linear-gradient(180deg,#f6fbff 0%, #ffffff 100%);}
+    body{display:flex;flex-direction:column;color:#0f172a;font-size:14px}
+    /* Top bar */
+    header{display:flex;align-items:center;gap:12px;padding:12px 14px;background:transparent}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--primary)}
+    .brand .logo{width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,var(--primary),#1565c0);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px}
+    .top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:1px solid rgba(15,23,42,0.06);background:var(--card);cursor:pointer;box-shadow:var(--shadow);font-weight:600}
+    .btn.primary{background:var(--primary);color:#fff;border:none}
+    .btn.ghost{background:transparent}
+    /* layout */
+    .container{flex:1;display:grid;grid-template-columns: 1fr 360px;gap:14px;padding:14px;align-items:stretch}
+    @media (max-width: 900px){ .container{grid-template-columns:1fr;grid-template-rows: auto 360px} .side{order:2} .mapwrap{order:1} }
+    /* map */
+    .mapwrap{position:relative;border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+    #map{height:100%;min-height:420px}
+    /* controls overlay */
+    .map-controls{position:absolute;left:12px;top:12px;display:flex;flex-direction:column;gap:8px;z-index:1200}
+    .control-card{background:var(--glass);backdrop-filter:blur(6px);padding:8px;border-radius:10px;border:1px solid rgba(0,0,0,0.04);box-shadow:0 6px 12px rgba(0,0,0,0.06)}
+    .inline{display:flex;gap:8px;align-items:center}
+    input[type="text"]{padding:8px 10px;border-radius:8px;border:1px solid #e6eef9;min-width:180px}
+    /* side panel */
+    .side{display:flex;flex-direction:column;gap:12px}
+    .card{background:var(--card);padding:12px;border-radius:12px;box-shadow:var(--shadow);border:1px solid rgba(15,23,42,0.04)}
+    .title{font-weight:700;margin-bottom:8px}
+    .small{font-size:13px;color:var(--muted)}
+    /* speedometer */
+    .speed-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px}
+    .gauge{width:160px;height:160px;display:flex;align-items:center;justify-content:center}
+    .speed-value{font-size:28px;font-weight:800}
+    .unit{font-size:12px;color:var(--muted)}
+    /* logs */
+    .logs{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}
+    .log-item{display:flex;justify-content:space-between;padding:8px;border-radius:8px;background:linear-gradient(180deg,#ffffff,#fbfdff);border:1px solid #f1f5f9}
+    .alertbar{position:fixed;left:50%;transform:translateX(-50%);top:86px;background:#fff8e1;padding:10px 16px;border-radius:8px;border:1px solid rgba(0,0,0,0.04);box-shadow:var(--shadow);display:none;z-index:2000}
+    /* responsive tweaks */
+    @media (max-width:480px){
+      .brand .text{display:none}
+      input[type="text"]{min-width:120px}
+      .side{padding-bottom:12px}
+      .gauge{width:120px;height:120px}
+    }
+    footer{padding:10px;text-align:center;color:var(--muted);font-size:13px}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="brand">
+        <div class="logo">B</div>
+        <div class="text">Passenger — Bus Tracker</div>
+      </div>
+      <div class="top-actions">
+        <button id="notifBtn" class="btn">Enable Notifications</button>
+        <button id="setHomeBtn" class="btn">Set Home</button>
+        <button id="goHomeBtn" class="btn ghost">Go Home</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="mapwrap card" aria-label="Map">
+        <div class="map-controls">
+          <div class="control-card">
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="searchInput" type="text" placeholder="Search Bus ID (e.g. driver-1)" />
+              <button id="searchBtn" class="btn primary">Search</button>
+            </div>
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+              <button id="layerBtn" class="btn">Switch Tiles</button>
+              <button id="centerBtn" class="btn">Center on Selected</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="map"></div>
+      </section>
+
+      <aside class="side">
+        <div class="card">
+          <div class="title">Selected Bus</div>
+          <div id="selectedId" class="small">None</div>
+          <div style="height:12px"></div>
+          <div class="speed-wrap">
+            <div class="gauge" id="gaugeSvg"></div>
+            <div class="speed-value" id="speedVal">— <span class="unit">km/h</span></div>
+            <div class="small" id="distanceToHome">Distance to Home: —</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="title">Home</div>
+          <div id="homeInfo" class="small">Not set</div>
+          <div style="height:8px"></div>
+          <div class="small">Set Home by panning the map to your location and clicking <b>Set Home</b>.</div>
+        </div>
+
+        <div class="card">
+          <div class="title">Recent Events</div>
+          <div id="logs" class="logs"></div>
+        </div>
+
+        <div class="card small">
+          <div>Auto-updates every time server broadcasts (drivers should send every 15s).</div>
+        </div>
+      </aside>
+    </main>
+
+    <div id="alert" class="alertbar"></div>
+
+    <footer>Built for local testing — replace <code>DEFAULT_SERVER</code> in code with your server IP if needed.</footer>
+  </div>
+
+  <!-- buzzer audio -->
+  <audio id="buzzer" preload="auto">
+    <source src="buzzer.mp3" type="audio/wav">
+    <!-- tiny empty wav fallback, replace with actual beep file if you want louder sound -->
+  </audio>
+
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+/* =========================
+   CONFIG - update DEFAULT_SERVER if your server IP is different
+   ========================= */
+const DEFAULT_SERVER = 'http://10.220.147.94:3000'; // <<-- CHANGE if needed
+const NOTIFY_DEBOUNCE_MS = 10 * 60 * 1000; // 10 minutes per bus for near-home alerts
+const NEAR_RADIUS_M = 2000; // 2 km
+const VERY_CLOSE_M = 25; // buzzer threshold
+/* ========================= */
+
+let socket = null;
+let map, tileLayers = {}, activeTile = 'osm';
+let markers = new Map(); // driverId -> marker
+let lastKnown = new Map(); // driverId -> latest payload
+let selectedId = null;
+let homeLocation = null;
+let notifiedAt = new Map(); // driverId -> timestamp
+const logsEl = document.getElementById('logs');
+const alertEl = document.getElementById('alert');
+const buzzer = document.getElementById('buzzer');
+
+/* =========================
+   Helpers
+   ========================= */
+function addLog(html){
+  const div = document.createElement('div');
+  div.className='log-item';
+  div.innerHTML = html;
+  logsEl.prepend(div);
+  // keep only 200 logs
+  while(logsEl.childElementCount > 200) logsEl.removeChild(logsEl.lastChild);
+}
+function haversineDistance(lat1, lon1, lat2, lon2){
+  const R=6371000; const toRad=(d)=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function fmtTime(t){ return new Date(t).toLocaleTimeString(); }
+function showAlert(text, timeout=6000){
+  alertEl.textContent=text; alertEl.style.display='block';
+  setTimeout(()=>{ alertEl.style.display='none'; }, timeout);
+}
+/* =========================
+   Map & tiles
+   ========================= */
+function initMap(){
+  map = L.map('map', { zoomControl:true }).setView([12.9716,77.5946],13);
+
+  tileLayers['osm'] = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OSM'});
+  tileLayers['sat'] = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles &copy; Esri'});
+  tileLayers['topo'] = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'&copy; OpenTopoMap'});
+  tileLayers['stamen'] = L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png',{maxZoom:20,attribution:'Stamen Toner'});
+
+  tileLayers['osm'].addTo(map);
+  activeTile='osm';
+
+  // small layer switcher: toggles cycling
+  document.getElementById('layerBtn').addEventListener('click', ()=> {
+    const keys=Object.keys(tileLayers);
+    const idx=keys.indexOf(activeTile);
+    const next=keys[(idx+1)%keys.length];
+    tileLayers[activeTile].remove();
+    tileLayers[next].addTo(map);
+    activeTile = next;
+    addLog(`<small>Switched tiles to <b>${next}</b></small>`);
+  });
+
+  // center selected
+  document.getElementById('centerBtn').addEventListener('click', ()=> {
+    if(selectedId && markers.has(selectedId)){
+      map.setView(markers.get(selectedId).getLatLng(), 15);
+      markers.get(selectedId).openPopup();
+    }
+  });
+}
+
+/* =========================
+   Socket & realtime
+   ========================= */
+function connect(){
+  socket = io(`${DEFAULT_SERVER}/passengers`, { transports:['websocket'] });
+  socket.on('connect', ()=> {
+    addLog(`<small>Connected (id ${socket.id})</small>`);
+    // subscribe to fleet for initial snapshot
+    socket.emit('subscribe:fleet');
+  });
+  socket.on('disconnect',(r)=>addLog(`<small>Disconnected (${r})</small>`));
+  socket.on('location:update', onLocationUpdate);
+  socket.on('fleet:init', arr => { arr.forEach(onLocationUpdate); });
+  socket.on('connect_error', err => addLog(`<small>Connect error</small>`));
+}
+
+function onLocationUpdate(loc){
+  const id = loc.driverId || loc.driverID || loc.id || 'unknown';
+  const lat = Number(loc.lat), lng = Number(loc.lng), ts = loc.timestamp || Date.now();
+  lastKnown.set(id, { driverId:id, lat,lng, speed:loc.speed ?? null, timestamp:ts });
+
+  // marker
+  if(markers.has(id)){
+    const m = markers.get(id);
+    m.setLatLng([lat,lng]);
+    m.getPopup().setContent(`<b>${id}</b><br>${lat.toFixed(6)}, ${lng.toFixed(6)}<br>${loc.speed ? 'Spd:'+loc.speed : '' }`);
+  } else {
+    const m = L.marker([lat,lng]).addTo(map).bindPopup(`<b>${id}</b>`);
+    m.on('click', ()=> selectBus(id));
+    markers.set(id, m);
+  }
+
+  addLog(`<div><b>${id}</b> ${lat.toFixed(5)}, ${lng.toFixed(5)} <span class="small">${fmtTime(ts)}</span></div>`);
+
+  // if selected -> update UI
+  if(selectedId === id){
+    updateSelectedUI(id);
+  }
+
+  // proximity checks
+  if(homeLocation){
+    const d=haversineDistance(homeLocation.lat,homeLocation.lng,lat,lng); // meters
+    if(d <= NEAR_RADIUS_M){
+      const last = notifiedAt.get(id) || 0;
+      if(Date.now() - last > NOTIFY_DEBOUNCE_MS){
+        notifiedAt.set(id, Date.now());
+        notifyUser(`${id} is within ${Math.round(d)} m of home`, `${id} nearby`);
+        showAlert(`${id} is within ${Math.round(d)} m of home`, 8000);
+        addLog(`<small>ALERT: ${id} is within ${Math.round(d)} m of home</small>`);
+      }
+    }
+    // very close (same location)
+    if(d <= VERY_CLOSE_M){
+      // play buzzer + vibrate + notify immediately (but don't spam)
+      const last = notifiedAt.get(id) || 0;
+      if(Date.now() - last > 5000){ // small debounce for buzzer
+        notifiedAt.set(id, Date.now());
+        playBuzzer();
+        if(navigator.vibrate) navigator.vibrate([200,100,200]);
+        notifyUser(`${id} has arrived at home location`, `${id} arrived`);
+        showAlert(`${id} has arrived!`, 6000);
+      }
+    }
+  }
+}
+
+/* =========================
+   UI: select bus & speed
+   ========================= */
+function selectBus(id){
+  selectedId = id;
+  document.getElementById('selectedId').textContent = id;
+  updateSelectedUI(id);
+}
+
+function updateSelectedUI(id){
+  const data = lastKnown.get(id);
+  if(!data) return;
+  const sp = data.speed ?? 0;
+  // speed is likely m/s; if so convert to km/h if speed > 0 and looks small.
+  let speedKmh = Number(sp);
+  // heuristics: if sp < 30 assume m/s else assume km/h
+  if(speedKmh !== null && speedKmh !== undefined){
+    if(speedKmh < 30) speedKmh = (speedKmh * 3.6); // convert m/s to km/h
+  } else speedKmh = 0;
+  document.getElementById('speedVal').innerHTML = `${Math.round(speedKmh)} <span class="unit">km/h</span>`;
+  // update gauge
+  renderGauge(Math.round(speedKmh));
+  // distance to home
+  if(homeLocation){
+    const d = Math.round(haversineDistance(homeLocation.lat, homeLocation.lng, data.lat, data.lng));
+    document.getElementById('distanceToHome').textContent = `Distance to Home: ${d} m`;
+  } else {
+    document.getElementById('distanceToHome').textContent = `Distance to Home: —`;
+  }
+}
+
+/* draw simple SVG gauge */
+function renderGauge(speed){
+  const svg = `<svg viewBox="0 0 100 100" width="100%" height="100%">
+    <defs>
+      <linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#4caf50"/><stop offset="1" stop-color="#ff9800"/></linearGradient>
+    </defs>
+    <circle cx="50" cy="50" r="40" fill="#f7fbff" stroke="#e6eef9" stroke-width="6"/>
+    <path d="${gaugeArcPath(speed)}" fill="none" stroke="url(#g1)" stroke-width="6" stroke-linecap="round"/>
+    <text x="50" y="60" text-anchor="middle" font-size="14" fill="#0f172a">${speed} km/h</text>
+  </svg>`;
+  document.getElementById('gaugeSvg').innerHTML = svg;
+}
+// convert speed 0-180 to arc path
+function gaugeArcPath(speed){
+  const max=180; const pc=Math.min(Math.max(speed,0),max)/max;
+  const start=220*Math.PI/180; const end=(220 - pc*220)*Math.PI/180;
+  const r=32; const cx=50; const cy=50;
+  const x1=cx + r*Math.cos(start); const y1=cy + r*Math.sin(start);
+  const x2=cx + r*Math.cos(end); const y2=cy + r*Math.sin(end);
+  const large = pc>0.5?1:0;
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 0 ${x2} ${y2}`;
+}
+
+/* =========================
+   Home handling
+   ========================= */
+function loadHome(){
+  try{
+    const raw=localStorage.getItem('passenger_home');
+    if(!raw) return null;
+    const obj=JSON.parse(raw);
+    if(obj && typeof obj.lat==='number' && typeof obj.lng==='number'){ homeLocation=obj; addHomeMarker(); document.getElementById('homeInfo').textContent = `${obj.lat.toFixed(6)}, ${obj.lng.toFixed(6)}`; }
+  }catch(e){}
+}
+let homeMarker=null;
+function addHomeMarker(){
+  if(!homeLocation) { if(homeMarker){ map.removeLayer(homeMarker); homeMarker=null } return; }
+  if(!homeMarker) homeMarker = L.circleMarker([homeLocation.lat, homeLocation.lng], { radius:8, color:'#1e88e5', fillColor:'#90caf9', fillOpacity:0.9 }).addTo(map).bindPopup('Home');
+  else homeMarker.setLatLng([homeLocation.lat, homeLocation.lng]);
+}
+document.getElementById('setHomeBtn').addEventListener('click', ()=>{
+  const center=map.getCenter();
+  homeLocation = { lat: center.lat, lng: center.lng };
+  localStorage.setItem('passenger_home', JSON.stringify(homeLocation));
+  addHomeMarker();
+  document.getElementById('homeInfo').textContent = `${homeLocation.lat.toFixed(6)}, ${homeLocation.lng.toFixed(6)}`;
+  addLog('<small>Home set</small>');
+  showAlert('Home set at map center', 3000);
+});
+document.getElementById('goHomeBtn').addEventListener('click', ()=>{
+  if(!homeLocation){ showAlert('Home not set',3000); return; }
+  map.setView([homeLocation.lat, homeLocation.lng], 15);
+  if(homeMarker) homeMarker.openPopup();
+});
+
+/* =========================
+   Notifications & buzzer
+   ========================= */
+async function ensureNotify(){
+  if(!('Notification' in window)) return false;
+  if(Notification.permission === 'granted') return true;
+  if(Notification.permission !== 'denied'){
+    const p = await Notification.requestPermission();
+    return p === 'granted';
+  }
+  return false;
+}
+document.getElementById('notifBtn').addEventListener('click', async ()=>{
+  const ok = await ensureNotify();
+  document.getElementById('notifBtn').textContent = ok ? 'Notifications ON' : 'Enable Notifications';
+  addLog('<small>Notification permission: '+ (ok? 'granted' : 'not granted') +'</small>');
+});
+function notifyUser(body, title='Bus Alert'){
+  ensureNotify().then((ok)=>{
+    if(ok) new Notification(title, { body });
+  });
+}
+function playBuzzer(){ try { buzzer.currentTime=0; buzzer.play(); } catch(e){} }
+
+/* =========================
+   Search UI
+   ========================= */
+document.getElementById('searchBtn').addEventListener('click', ()=>{
+  const q = document.getElementById('searchInput').value.trim();
+  if(!q){ showAlert('Enter a Bus ID'); return; }
+  if(!socket || !socket.connected){ showAlert('Not connected to server'); return; }
+  selectedId = q;
+  document.getElementById('selectedId').textContent = q;
+  socket.emit('subscribe:driver', q);
+  if(markers.has(q)){ map.setView(markers.get(q).getLatLng(), 15); markers.get(q).openPopup(); updateSelectedUI(q); }
+  addLog(`<small>Subscribed to ${q}</small>`);
+});
+
+/* =========================
+   Startup
+   ========================= */
+window.addEventListener('load', ()=>{
+  initMap();
+  loadHome();
+  connect();
+  ensureNotify().then(ok => { document.getElementById('notifBtn').textContent = ok ? 'Notifications ON' : 'Enable Notifications'; });
+  renderGauge(0);
+  // register service worker
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/sw.js').then(()=>console.log('sw registered')).catch(()=>{/*ignore*/});
+  }
+});
+  </script>
+</body>
+</html>
