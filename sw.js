@@ -1,46 +1,52 @@
-// sw.js
-const APP_CACHE = 'passenger-pwa-v1';
-const TILE_CACHE = 'passenger-tiles-v1';
-const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+const CACHE_NAME = 'buzzy-v2';
+const STATIC_ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+  './buzzer.mp3'
 ];
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(APP_CACHE).then(cache => cache.addAll(APP_SHELL))
+self.addEventListener('install', (evt) => {
+  evt.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
   );
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim());
+self.addEventListener('activate', (evt) => {
+  evt.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      );
+    })
+  );
+  self.clients.claim();
 });
 
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
+self.addEventListener('fetch', (evt) => {
+  const url = new URL(evt.request.url);
 
-  // runtime cache for tile providers (OpenStreetMap, Esri, Stamen, OpenTopo)
-  if (url.hostname.endsWith('tile.openstreetmap.org') ||
-      url.hostname.includes('server.arcgisonline.com') ||
-      url.hostname.includes('stamen-tiles') ||
-      url.hostname.includes('tile.opentopomap.org')) {
-    e.respondWith(
-      caches.open(TILE_CACHE).then(cache =>
-        cache.match(e.request).then(resp => resp || fetch(e.request).then(fetchResp => {
-          cache.put(e.request, fetchResp.clone());
-          return fetchResp;
-        }))
-      )
-    );
-    return;
+  // Strategy for Tiles: Cache First, fallback to Network
+  if(url.href.includes('tile.openstreetmap') || url.href.includes('arcgisonline')) {
+     evt.respondWith(
+       caches.open('buzzy-tiles').then(cache => 
+         cache.match(evt.request).then(resp => {
+           return resp || fetch(evt.request).then(netResp => {
+             cache.put(evt.request, netResp.clone());
+             return netResp;
+           });
+         })
+       )
+     );
+     return;
   }
 
-  // app shell cache-first
-  e.respondWith(
-    caches.match(e.request).then(resp => resp || fetch(e.request))
+  // Strategy for App Shell: Network First (for realtime updates), fallback to Cache
+  evt.respondWith(
+    fetch(evt.request)
+      .catch(() => caches.match(evt.request))
   );
 });
