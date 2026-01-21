@@ -2,425 +2,795 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Buzzy — Bus Tracker PWA</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Buzzy — Bus Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="description" content="Real-time bus tracking application">
   <link rel="manifest" href="manifest.json" />
+  
+  <!-- Fonts & Leaflet -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
   <style>
-    :root{
-      --primary:#1e88e5;
-      --bg:#fbfdff;
-      --card:#ffffff;
-      --muted:#6b7280;
-      --accent:#ffb300;
-      --danger:#d32f2f;
-      --glass: rgba(255,255,255,0.85);
-      --shadow: 0 6px 18px rgba(22,28,37,0.08);
-      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    /* --- CSS Variables & Reset --- */
+    :root {
+      --primary: #2563eb;       /* Blue 600 */
+      --primary-dark: #1d4ed8;  /* Blue 700 */
+      --primary-light: #eff6ff; /* Blue 50 */
+      --bg: #f8fafc;           /* Slate 50 */
+      --surface: #ffffff;
+      --text-main: #0f172a;    /* Slate 900 */
+      --text-muted: #64748b;   /* Slate 500 */
+      --border: #e2e8f0;       /* Slate 200 */
+      --danger: #ef4444;       /* Red 500 */
+      --success: #22c55e;      /* Green 500 */
+      --warning: #f59e0b;      /* Amber 500 */
+      
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+      
+      --glass: rgba(255, 255, 255, 0.92);
+      --glass-border: rgba(255, 255, 255, 0.5);
+      --blur: blur(12px);
+      
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+      
+      --header-height: 60px;
     }
-    html,body,#app{height:100%;margin:0;background:linear-gradient(180deg,#f6fbff 0%, #ffffff 100%);}
-    body{display:flex;flex-direction:column;color:#0f172a;font-size:14px}
-    /* Top bar */
-    header{display:flex;align-items:center;gap:12px;padding:12px 14px;background:transparent}
-    .brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--primary)}
-    .brand .logo{width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,var(--primary),#1565c0);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px}
-    .top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
-    .btn{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:1px solid rgba(15,23,42,0.06);background:var(--card);cursor:pointer;box-shadow:var(--shadow);font-weight:600}
-    .btn.primary{background:var(--primary);color:#fff;border:none}
-    .btn.ghost{background:transparent}
-    /* layout */
-    .container{flex:1;display:grid;grid-template-columns: 1fr 360px;gap:14px;padding:14px;align-items:stretch}
-    @media (max-width: 900px){ .container{grid-template-columns:1fr;grid-template-rows: auto 360px} .side{order:2} .mapwrap{order:1} }
-    /* map */
-    .mapwrap{position:relative;border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
-    #map{height:100%;min-height:420px}
-    /* controls overlay */
-    .map-controls{position:absolute;left:12px;top:12px;display:flex;flex-direction:column;gap:8px;z-index:1200}
-    .control-card{background:var(--glass);backdrop-filter:blur(6px);padding:8px;border-radius:10px;border:1px solid rgba(0,0,0,0.04);box-shadow:0 6px 12px rgba(0,0,0,0.06)}
-    .inline{display:flex;gap:8px;align-items:center}
-    input[type="text"]{padding:8px 10px;border-radius:8px;border:1px solid #e6eef9;min-width:180px}
-    /* side panel */
-    .side{display:flex;flex-direction:column;gap:12px}
-    .card{background:var(--card);padding:12px;border-radius:12px;box-shadow:var(--shadow);border:1px solid rgba(15,23,42,0.04)}
-    .title{font-weight:700;margin-bottom:8px}
-    .small{font-size:13px;color:var(--muted)}
-    /* speedometer */
-    .speed-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px}
-    .gauge{width:160px;height:160px;display:flex;align-items:center;justify-content:center}
-    .speed-value{font-size:28px;font-weight:800}
-    .unit{font-size:12px;color:var(--muted)}
-    /* logs */
-    .logs{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}
-    .log-item{display:flex;justify-content:space-between;padding:8px;border-radius:8px;background:linear-gradient(180deg,#ffffff,#fbfdff);border:1px solid #f1f5f9}
-    .alertbar{position:fixed;left:50%;transform:translateX(-50%);top:86px;background:#fff8e1;padding:10px 16px;border-radius:8px;border:1px solid rgba(0,0,0,0.04);box-shadow:var(--shadow);display:none;z-index:2000}
-    /* responsive tweaks */
-    @media (max-width:480px){
-      .brand .text{display:none}
-      input[type="text"]{min-width:120px}
-      .side{padding-bottom:12px}
-      .gauge{width:120px;height:120px}
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
     }
-    footer{padding:10px;text-align:center;color:var(--muted);font-size:13px}
+
+    /* --- Icons --- */
+    .icon { width: 20px; height: 20px; stroke-width: 2; stroke: currentColor; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-sm { width: 16px; height: 16px; }
+
+    /* --- Layout --- */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh; /* Dynamic viewport height */
+    }
+
+    /* Header */
+    header {
+      height: var(--header-height);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 50;
+      flex-shrink: 0;
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--text-main);
+    }
+    
+    .logo-box {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border-radius: var(--radius-sm);
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 800;
+      box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
+    }
+
+    .header-actions { display: flex; gap: 8px; }
+
+    /* Main Content Area */
+    .main-layout {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Map Section */
+    .map-section {
+      position: relative;
+      flex: 1;
+      background: #e2e8f0; /* placeholder bg */
+      display: flex;
+      flex-direction: column;
+    }
+    
+    #map { width: 100%; height: 100%; z-index: 1; }
+
+    /* Floating Map Controls */
+    .map-overlay-top {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      z-index: 20;
+      pointer-events: none; /* Let clicks pass through around items */
+      display: flex;
+      justify-content: center;
+    }
+    
+    .search-bar {
+      pointer-events: auto;
+      background: var(--glass);
+      backdrop-filter: var(--blur);
+      border: 1px solid var(--glass-border);
+      padding: 8px 12px;
+      border-radius: 50px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 400px;
+      transition: transform 0.2s;
+    }
+    .search-bar:focus-within { transform: scale(1.02); }
+    .search-bar input {
+      border: none;
+      background: transparent;
+      outline: none;
+      font-size: 14px;
+      width: 100%;
+      color: var(--text-main);
+    }
+
+    .map-overlay-bottom {
+      position: absolute;
+      bottom: 24px;
+      right: 16px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Buttons */
+    .btn-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      transition: all 0.2s;
+    }
+    .btn-icon:active { transform: scale(0.95); }
+    .btn-icon.primary { background: var(--primary); color: white; border: none; }
+    .btn-icon.active { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
+
+    .btn-pill {
+      height: 36px;
+      padding: 0 16px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-main);
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-pill:active { transform: scale(0.96); background: var(--bg); }
+    .btn-pill.primary { background: var(--primary); color: white; border: none; box-shadow: 0 2px 4px rgba(37,99,235,0.3); }
+
+    /* Sidebar / Bottom Sheet */
+    .sidebar {
+      width: 360px;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      z-index: 30;
+      box-shadow: -2px 0 10px rgba(0,0,0,0.05);
+    }
+
+    .sidebar-content { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .card-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Gauge */
+    .gauge-container {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      margin: 0 auto;
+    }
+    .gauge-value {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .gauge-number { font-size: 2rem; font-weight: 800; line-height: 1; }
+    .gauge-unit { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; margin-top: 4px; }
+    .gauge-bg { fill: none; stroke: var(--bg); stroke-width: 8; stroke-linecap: round; }
+    .gauge-fill { fill: none; stroke: var(--primary); stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+
+    /* Logs */
+    .log-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .log-item {
+      font-size: 0.8rem;
+      padding: 8px 10px;
+      background: var(--bg);
+      border-radius: var(--radius-sm);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-left: 3px solid var(--text-muted);
+    }
+    .log-item.alert { border-left-color: var(--danger); background: #fef2f2; }
+
+    /* Alert Toast */
+    .toast-container {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      width: 90%;
+      max-width: 400px;
+      pointer-events: none;
+    }
+    .toast {
+      background: var(--surface);
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      border-left: 4px solid var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+      pointer-events: auto;
+      animation: slideDown 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Footer */
+    .app-footer {
+      font-size: 0.7rem;
+      text-align: center;
+      color: var(--text-muted);
+      margin-top: auto;
+      padding-top: 20px;
+    }
+
+    /* --- Responsive Logic --- */
+    @media (max-width: 768px) {
+      /* Mobile Layout: Split vertical */
+      .main-layout { flex-direction: column; }
+      
+      /* Header compact */
+      .brand span { display: none; } /* Hide text logo on small phones if needed, keeping mostly visible for now */
+      
+      /* Map takes roughly 60% */
+      .map-section { flex: 6; min-height: 40%; }
+      
+      /* Sidebar takes remaining space, clean scroll */
+      .sidebar {
+        width: 100%;
+        flex: 4;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+      }
+      
+      .sidebar-content { padding: 16px; gap: 12px; }
+      .gauge-container { width: 100px; height: 100px; }
+      .gauge-number { font-size: 1.5rem; }
+      
+      /* Adjust overlay controls position for thumb reachability */
+      .map-overlay-bottom { bottom: 16px; right: 16px; }
+    }
   </style>
 </head>
 <body>
+
   <div id="app">
     <header>
       <div class="brand">
-        <div class="logo">B</div>
-        <div class="text">Buzzy — Bus Tracker</div>
+        <div class="logo-box">B</div>
+        <span>Buzzy</span>
       </div>
-      <div class="top-actions">
-        <button id="notifBtn" class="btn">Enable Notifications</button>
-        <button id="setHomeBtn" class="btn">Set Home</button>
-        <button id="goHomeBtn" class="btn ghost">Go Home</button>
+      <div class="header-actions">
+        <button id="notifBtn" class="btn-pill" title="Notifications">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          <span class="label">Enable</span>
+        </button>
       </div>
     </header>
 
-    <main class="container">
-      <section class="mapwrap card" aria-label="Map">
-        <div class="map-controls">
-          <div class="control-card">
-            <div style="display:flex;gap:8px;align-items:center">
-              <input id="searchInput" type="text" placeholder="Search Bus ID (e.g. driver-1)" />
-              <button id="searchBtn" class="btn primary">Search</button>
-            </div>
-            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-              <button id="layerBtn" class="btn">Switch Tiles</button>
-              <button id="centerBtn" class="btn">Center on Selected</button>
-            </div>
+    <div class="main-layout">
+      <!-- Map Area -->
+      <section class="map-section">
+        <!-- Search Floating Bar -->
+        <div class="map-overlay-top">
+          <div class="search-bar">
+            <svg class="icon" style="color:var(--text-muted)" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input id="searchInput" type="text" placeholder="Search Bus ID (e.g. driver-1)" enterkeyhint="search" />
+            <button id="searchBtn" class="btn-pill primary" style="height:28px; padding:0 12px; font-size:12px;">Go</button>
           </div>
+        </div>
+
+        <!-- FABs -->
+        <div class="map-overlay-bottom">
+          <button id="layerBtn" class="btn-icon" title="Switch Layers">
+            <svg class="icon" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          </button>
+          <button id="centerBtn" class="btn-icon" title="Center on Bus">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+          </button>
+          <button id="goHomeBtn" class="btn-icon primary" title="Go to Home">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          </button>
         </div>
 
         <div id="map"></div>
       </section>
 
-      <aside class="side">
-        <div class="card">
-          <div class="title">Selected Bus</div>
-          <div id="selectedId" class="small">None</div>
-          <div style="height:12px"></div>
-          <div class="speed-wrap">
-            <div class="gauge" id="gaugeSvg"></div>
-            <div class="speed-value" id="speedVal">— <span class="unit">km/h</span></div>
-            <div class="small" id="distanceToHome">Distance to Home: —</div>
+      <!-- Sidebar Info Panel -->
+      <aside class="sidebar">
+        <div class="sidebar-content">
+          
+          <!-- Selected Bus Info -->
+          <div class="card">
+            <div class="card-title">
+              <span>Current Status</span>
+              <span id="selectedId" style="color:var(--primary); font-weight:800;">No Bus Selected</span>
+            </div>
+            
+            <div class="gauge-container">
+              <svg viewBox="0 0 100 100" style="transform: rotate(-90deg); width:100%; height:100%;">
+                <circle cx="50" cy="50" r="45" class="gauge-bg"></circle>
+                <circle id="gaugeFill" cx="50" cy="50" r="45" class="gauge-fill" stroke-dasharray="283" stroke-dashoffset="283"></circle>
+              </svg>
+              <div class="gauge-value">
+                <span id="speedVal" class="gauge-number">0</span>
+                <span class="gauge-unit">km/h</span>
+              </div>
+            </div>
+            
+            <div style="margin-top:12px; text-align:center; font-size:0.9rem; color:var(--text-muted);">
+              <div id="distanceToHome">Distance to Home: —</div>
+            </div>
+          </div>
+
+          <!-- Home Settings -->
+          <div class="card">
+            <div class="card-title">My Home</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+               <div id="homeInfo" style="font-size:0.85rem; font-family:monospace; color:var(--text-muted);">Not Set</div>
+               <button id="setHomeBtn" class="btn-pill">Set Here</button>
+            </div>
+            <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
+              Move map to your location and click "Set Here".
+            </div>
+          </div>
+
+          <!-- Logs -->
+          <div class="card" style="flex:1; min-height:120px; display:flex; flex-direction:column;">
+            <div class="card-title">Activity Log</div>
+            <div id="logs" class="log-list"></div>
+          </div>
+          
+          <div class="app-footer">
+            Server: <code id="serverAddress">...</code>
           </div>
         </div>
-
-        <div class="card">
-          <div class="title">Home</div>
-          <div id="homeInfo" class="small">Not set</div>
-          <div style="height:8px"></div>
-          <div class="small">Set Home by panning the map to your location and clicking <b>Set Home</b>.</div>
-        </div>
-
-        <div class="card">
-          <div class="title">Recent Events</div>
-          <div id="logs" class="logs"></div>
-        </div>
-
-        <div class="card small">
-          <div>Auto-updates every time server broadcasts (drivers should send every 15s).</div>
-        </div>
       </aside>
-    </main>
+    </div>
 
-    <div id="alert" class="alertbar"></div>
-
-    <footer>Built for local testing — replace <code>DEFAULT_SERVER</code> in code with your server IP if needed.</footer>
+    <!-- Alert Container -->
+    <div id="alertContainer" class="toast-container"></div>
   </div>
 
-  <!-- buzzer audio -->
+  <!-- Audio -->
   <audio id="buzzer" preload="auto">
-    <source src="buzzer.mp3" type="audio/wav">
-    <!-- tiny empty wav fallback, replace with actual beep file if you want louder sound -->
+    <source src="buzzer.mp3" type="audio/mpeg">
   </audio>
 
+  <!-- External Libs -->
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-/* =========================
-   CONFIG - update DEFAULT_SERVER if your server IP is different
-   ========================= */
-const DEFAULT_SERVER = 'https://buzzy-server-final.onrender.com'; // <<-- CHANGE if needed
-const NOTIFY_DEBOUNCE_MS = 10 * 60 * 1000; // 10 minutes per bus for near-home alerts
-const NEAR_RADIUS_M = 2000; // 2 km
-const VERY_CLOSE_M = 25; // buzzer threshold
-/* ========================= */
+    /* =========================
+       CONFIG
+       ========================= */
+    const DEFAULT_SERVER = 'https://buzzy-server-final.onrender.com';
+    const NOTIFY_DEBOUNCE_MS = 10 * 60 * 1000; // 10 mins
+    const NEAR_RADIUS_M = 2000; // 2km Alert
+    const VERY_CLOSE_M = 150;    // 150m Buzzer
 
-let socket = null;
-let map, tileLayers = {}, activeTile = 'osm';
-let markers = new Map(); // driverId -> marker
-let lastKnown = new Map(); // driverId -> latest payload
-let selectedId = null;
-let homeLocation = null;
-let notifiedAt = new Map(); // driverId -> timestamp
-const logsEl = document.getElementById('logs');
-const alertEl = document.getElementById('alert');
-const buzzer = document.getElementById('buzzer');
+    // State
+    let socket = null;
+    let map;
+    let tileLayers = {}, activeTile = 'osm';
+    let markers = new Map(); 
+    let lastKnown = new Map();
+    let selectedId = null;
+    let homeLocation = null;
+    let homeMarker = null;
+    let notifiedAt = new Map();
 
-/* =========================
-   Helpers
-   ========================= */
-function addLog(html){
-  const div = document.createElement('div');
-  div.className='log-item';
-  div.innerHTML = html;
-  logsEl.prepend(div);
-  // keep only 200 logs
-  while(logsEl.childElementCount > 200) logsEl.removeChild(logsEl.lastChild);
-}
-function haversineDistance(lat1, lon1, lat2, lon2){
-  const R=6371000; const toRad=(d)=>d*Math.PI/180;
-  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-function fmtTime(t){ return new Date(t).toLocaleTimeString(); }
-function showAlert(text, timeout=6000){
-  alertEl.textContent=text; alertEl.style.display='block';
-  setTimeout(()=>{ alertEl.style.display='none'; }, timeout);
-}
-/* =========================
-   Map & tiles
-   ========================= */
-function initMap(){
-  map = L.map('map', { zoomControl:true }).setView([12.9716,77.5946],13);
+    // DOM Elements
+    const logsEl = document.getElementById('logs');
+    const buzzer = document.getElementById('buzzer');
+    const gaugeFill = document.getElementById('gaugeFill');
+    const serverLabel = document.getElementById('serverAddress');
 
-  tileLayers['osm'] = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OSM'});
-  tileLayers['sat'] = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles &copy; Esri'});
-  tileLayers['topo'] = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'&copy; OpenTopoMap'});
-  tileLayers['stamen'] = L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png',{maxZoom:20,attribution:'Stamen Toner'});
+    // Display Server
+    serverLabel.textContent = new URL(DEFAULT_SERVER).hostname;
 
-  tileLayers['osm'].addTo(map);
-  activeTile='osm';
+    /* =========================
+       INIT
+       ========================= */
+    window.addEventListener('load', () => {
+      initMap();
+      loadHome();
+      connect();
+      updateNotifBtn();
+      
+      // Register Service Worker
+      if('serviceWorker' in navigator){
+        navigator.serviceWorker.register('sw.js')
+          .then(() => console.log('SW Registered'))
+          .catch(console.error);
+      }
+    });
 
-  // small layer switcher: toggles cycling
-  document.getElementById('layerBtn').addEventListener('click', ()=> {
-    const keys=Object.keys(tileLayers);
-    const idx=keys.indexOf(activeTile);
-    const next=keys[(idx+1)%keys.length];
-    tileLayers[activeTile].remove();
-    tileLayers[next].addTo(map);
-    activeTile = next;
-    addLog(`<small>Switched tiles to <b>${next}</b></small>`);
-  });
+    /* =========================
+       MAP
+       ========================= */
+    function initMap(){
+      // Initialize map, remove default zoom control to use custom or gestures
+      map = L.map('map', { zoomControl: false, attributionControl: false }).setView([12.9716, 77.5946], 13);
+      L.control.attribution({position: 'bottomleft'}).addTo(map);
 
-  // center selected
-  document.getElementById('centerBtn').addEventListener('click', ()=> {
-    if(selectedId && markers.has(selectedId)){
-      map.setView(markers.get(selectedId).getLatLng(), 15);
-      markers.get(selectedId).openPopup();
+      // Tile Layers
+      tileLayers['osm'] = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'&copy; OSM' });
+      tileLayers['sat'] = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, attribution:'&copy; Esri' });
+      
+      tileLayers['osm'].addTo(map);
+
+      // Layer Toggle
+      document.getElementById('layerBtn').addEventListener('click', () => {
+        if(activeTile === 'osm'){
+          map.removeLayer(tileLayers['osm']);
+          tileLayers['sat'].addTo(map);
+          activeTile = 'sat';
+        } else {
+          map.removeLayer(tileLayers['sat']);
+          tileLayers['osm'].addTo(map);
+          activeTile = 'osm';
+        }
+      });
+      
+      // Map Clicks
+      map.on('click', () => {
+         // Maybe clear selection if needed? For now we keep it.
+      });
     }
-  });
-}
 
-/* =========================
-   Socket & realtime
-   ========================= */
-function connect(){
-  socket = io(`${DEFAULT_SERVER}/passengers`, { transports:['websocket'] });
-  socket.on('connect', ()=> {
-    addLog(`<small>Connected (id ${socket.id})</small>`);
-    // subscribe to fleet for initial snapshot
-    socket.emit('subscribe:fleet');
-  });
-  socket.on('disconnect',(r)=>addLog(`<small>Disconnected (${r})</small>`));
-  socket.on('location:update', onLocationUpdate);
-  socket.on('fleet:init', arr => { arr.forEach(onLocationUpdate); });
-  socket.on('connect_error', err => addLog(`<small>Connect error</small>`));
-}
+    /* =========================
+       SOCKET & TRACKING
+       ========================= */
+    function connect(){
+      socket = io(`${DEFAULT_SERVER}/passengers`, { transports:['websocket'] });
+      
+      socket.on('connect', () => addLog('Connected to Server', 'success'));
+      socket.on('disconnect', () => addLog('Disconnected', 'danger'));
+      
+      socket.on('location:update', handleLocationUpdate);
+      socket.on('fleet:init', (arr) => arr.forEach(handleLocationUpdate));
+      
+      // Subscribe initial
+      socket.emit('subscribe:fleet');
+    }
 
-function onLocationUpdate(loc){
-  const id = loc.driverId || loc.driverID || loc.id || 'unknown';
-  const lat = Number(loc.lat), lng = Number(loc.lng), ts = loc.timestamp || Date.now();
-  lastKnown.set(id, { driverId:id, lat,lng, speed:loc.speed ?? null, timestamp:ts });
+    function handleLocationUpdate(loc){
+      const id = loc.driverId || loc.driverID || loc.id || 'Unknown';
+      const lat = Number(loc.lat);
+      const lng = Number(loc.lng);
+      const ts = loc.timestamp || Date.now();
+      const speed = loc.speed !== undefined ? Number(loc.speed) : 0;
 
-  // marker
-  if(markers.has(id)){
-    const m = markers.get(id);
-    m.setLatLng([lat,lng]);
-    m.getPopup().setContent(`<b>${id}</b><br>${lat.toFixed(6)}, ${lng.toFixed(6)}<br>${loc.speed ? 'Spd:'+loc.speed : '' }`);
-  } else {
-    const m = L.marker([lat,lng]).addTo(map).bindPopup(`<b>${id}</b>`);
-    m.on('click', ()=> selectBus(id));
-    markers.set(id, m);
-  }
+      lastKnown.set(id, { id, lat, lng, speed, ts });
 
-  addLog(`<div><b>${id}</b> ${lat.toFixed(5)}, ${lng.toFixed(5)} <span class="small">${fmtTime(ts)}</span></div>`);
+      // Update Marker
+      if(markers.has(id)){
+        const m = markers.get(id);
+        const oldLatLng = m.getLatLng();
+        m.setLatLng([lat, lng]);
+        
+        // Smooth rotation if possible (optional enhancement not fully impl here)
+        m.setPopupContent(`<b>${id}</b><br>Speed: ${Math.round(speed)}`);
+      } else {
+        // Create Bus Icon
+        const busIcon = L.divIcon({
+          className: 'custom-bus-icon',
+          html: `<div style="background:#2563eb; width:24px; height:24px; border:2px solid white; border-radius:50%; box-shadow:0 3px 6px rgba(0,0,0,0.2);"></div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+        
+        const m = L.marker([lat, lng], { icon: busIcon }).addTo(map).bindPopup(`<b>${id}</b>`);
+        m.on('click', () => selectBus(id));
+        markers.set(id, m);
+        addLog(`Found ${id}`, 'info');
+      }
 
-  // if selected -> update UI
-  if(selectedId === id){
-    updateSelectedUI(id);
-  }
+      // UI Update if Selected
+      if(selectedId === id) updateDashboard(id);
 
-  // proximity checks
-  if(homeLocation){
-    const d=haversineDistance(homeLocation.lat,homeLocation.lng,lat,lng); // meters
-    if(d <= NEAR_RADIUS_M){
-      const last = notifiedAt.get(id) || 0;
-      if(Date.now() - last > NOTIFY_DEBOUNCE_MS){
-        notifiedAt.set(id, Date.now());
-        notifyUser(`${id} is within ${Math.round(d)} m of home`, `${id} nearby`);
-        showAlert(`${id} is within ${Math.round(d)} m of home`, 8000);
-        addLog(`<small>ALERT: ${id} is within ${Math.round(d)} m of home</small>`);
+      // Proximity Logic
+      checkProximity(id, lat, lng);
+    }
+
+    function checkProximity(id, lat, lng){
+      if(!homeLocation) return;
+      
+      const dist = haversine(homeLocation.lat, homeLocation.lng, lat, lng);
+      
+      // Near Alert
+      if(dist <= NEAR_RADIUS_M){
+        const last = notifiedAt.get(id) || 0;
+        if(Date.now() - last > NOTIFY_DEBOUNCE_MS){
+          notifiedAt.set(id, Date.now());
+          const msg = `${id} is ${Math.round(dist)}m away!`;
+          sendNotification(msg);
+          showToast(msg, 'warning');
+          addLog(msg, 'alert');
+        }
+      }
+
+      // Arrival Buzzer
+      if(dist <= VERY_CLOSE_M){
+        // Debounce buzzer specifically to avoid spamming every second
+        const last = notifiedAt.get(id + '_buzz') || 0;
+        if(Date.now() - last > 15000){ // 15 sec buzzer debounce
+          notifiedAt.set(id + '_buzz', Date.now());
+          playBuzzer();
+          const msg = `${id} has arrived!`;
+          showToast(msg, 'success');
+          addLog(msg, 'success');
+          if(navigator.vibrate) navigator.vibrate([500, 200, 500]);
+        }
       }
     }
-    // very close (same location)
-    if(d <= VERY_CLOSE_M){
-      // play buzzer + vibrate + notify immediately (but don't spam)
-      const last = notifiedAt.get(id) || 0;
-      if(Date.now() - last > 5000){ // small debounce for buzzer
-        notifiedAt.set(id, Date.now());
-        playBuzzer();
-        if(navigator.vibrate) navigator.vibrate([200,100,200]);
-        notifyUser(`${id} has arrived at home location`, `${id} arrived`);
-        showAlert(`${id} has arrived!`, 6000);
+
+    /* =========================
+       UI LOGIC
+       ========================= */
+    function selectBus(id){
+      selectedId = id;
+      document.getElementById('selectedId').textContent = id;
+      updateDashboard(id);
+      
+      // Auto-center once
+      if(markers.has(id)){
+        map.flyTo(markers.get(id).getLatLng(), 15);
+        markers.get(id).openPopup();
       }
     }
-  }
-}
 
-/* =========================
-   UI: select bus & speed
-   ========================= */
-function selectBus(id){
-  selectedId = id;
-  document.getElementById('selectedId').textContent = id;
-  updateSelectedUI(id);
-}
+    function updateDashboard(id){
+      const data = lastKnown.get(id);
+      if(!data) return;
 
-function updateSelectedUI(id){
-  const data = lastKnown.get(id);
-  if(!data) return;
-  const sp = data.speed ?? 0;
-  // speed is likely m/s; if so convert to km/h if speed > 0 and looks small.
-  let speedKmh = Number(sp);
-  // heuristics: if sp < 30 assume m/s else assume km/h
-  if(speedKmh !== null && speedKmh !== undefined){
-    if(speedKmh < 30) speedKmh = (speedKmh * 3.6); // convert m/s to km/h
-  } else speedKmh = 0;
-  document.getElementById('speedVal').innerHTML = `${Math.round(speedKmh)} <span class="unit">km/h</span>`;
-  // update gauge
-  renderGauge(Math.round(speedKmh));
-  // distance to home
-  if(homeLocation){
-    const d = Math.round(haversineDistance(homeLocation.lat, homeLocation.lng, data.lat, data.lng));
-    document.getElementById('distanceToHome').textContent = `Distance to Home: ${d} m`;
-  } else {
-    document.getElementById('distanceToHome').textContent = `Distance to Home: —`;
-  }
-}
+      // Speed Formatting (assuming m/s from server, convert to km/h)
+      // If server sends km/h already, adjust logic. Most GPS raw is m/s.
+      // Logic: if value < 40 likely m/s.
+      let speedKmh = data.speed;
+      if(speedKmh < 40) speedKmh = speedKmh * 3.6; 
+      
+      const val = Math.round(speedKmh);
+      document.getElementById('speedVal').textContent = val;
+      
+      // Update Gauge Ring
+      // Circumference = 2 * PI * 45 ≈ 283
+      const maxVal = 120; // max speed
+      const dash = 283;
+      const offset = dash - (Math.min(val, maxVal) / maxVal) * dash;
+      gaugeFill.style.strokeDashoffset = offset;
+      
+      // Colorize gauge based on speed
+      if(val > 80) gaugeFill.style.stroke = 'var(--danger)';
+      else if(val > 50) gaugeFill.style.stroke = 'var(--warning)';
+      else gaugeFill.style.stroke = 'var(--primary)';
 
-/* draw simple SVG gauge */
-function renderGauge(speed){
-  const svg = `<svg viewBox="0 0 100 100" width="100%" height="100%">
-    <defs>
-      <linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#4caf50"/><stop offset="1" stop-color="#ff9800"/></linearGradient>
-    </defs>
-    <circle cx="50" cy="50" r="40" fill="#f7fbff" stroke="#e6eef9" stroke-width="6"/>
-    <path d="${gaugeArcPath(speed)}" fill="none" stroke="url(#g1)" stroke-width="6" stroke-linecap="round"/>
-    <text x="50" y="60" text-anchor="middle" font-size="14" fill="#0f172a">${speed} km/h</text>
-  </svg>`;
-  document.getElementById('gaugeSvg').innerHTML = svg;
-}
-// convert speed 0-180 to arc path
-function gaugeArcPath(speed){
-  const max=180; const pc=Math.min(Math.max(speed,0),max)/max;
-  const start=220*Math.PI/180; const end=(220 - pc*220)*Math.PI/180;
-  const r=32; const cx=50; const cy=50;
-  const x1=cx + r*Math.cos(start); const y1=cy + r*Math.sin(start);
-  const x2=cx + r*Math.cos(end); const y2=cy + r*Math.sin(end);
-  const large = pc>0.5?1:0;
-  return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 0 ${x2} ${y2}`;
-}
+      // Distance
+      if(homeLocation){
+        const d = Math.round(haversine(homeLocation.lat, homeLocation.lng, data.lat, data.lng));
+        document.getElementById('distanceToHome').innerHTML = `Distance: <b>${d} m</b>`;
+      }
+    }
 
-/* =========================
-   Home handling
-   ========================= */
-function loadHome(){
-  try{
-    const raw=localStorage.getItem('passenger_home');
-    if(!raw) return null;
-    const obj=JSON.parse(raw);
-    if(obj && typeof obj.lat==='number' && typeof obj.lng==='number'){ homeLocation=obj; addHomeMarker(); document.getElementById('homeInfo').textContent = `${obj.lat.toFixed(6)}, ${obj.lng.toFixed(6)}`; }
-  }catch(e){}
-}
-let homeMarker=null;
-function addHomeMarker(){
-  if(!homeLocation) { if(homeMarker){ map.removeLayer(homeMarker); homeMarker=null } return; }
-  if(!homeMarker) homeMarker = L.circleMarker([homeLocation.lat, homeLocation.lng], { radius:8, color:'#1e88e5', fillColor:'#90caf9', fillOpacity:0.9 }).addTo(map).bindPopup('Home');
-  else homeMarker.setLatLng([homeLocation.lat, homeLocation.lng]);
-}
-document.getElementById('setHomeBtn').addEventListener('click', ()=>{
-  const center=map.getCenter();
-  homeLocation = { lat: center.lat, lng: center.lng };
-  localStorage.setItem('passenger_home', JSON.stringify(homeLocation));
-  addHomeMarker();
-  document.getElementById('homeInfo').textContent = `${homeLocation.lat.toFixed(6)}, ${homeLocation.lng.toFixed(6)}`;
-  addLog('<small>Home set</small>');
-  showAlert('Home set at map center', 3000);
-});
-document.getElementById('goHomeBtn').addEventListener('click', ()=>{
-  if(!homeLocation){ showAlert('Home not set',3000); return; }
-  map.setView([homeLocation.lat, homeLocation.lng], 15);
-  if(homeMarker) homeMarker.openPopup();
-});
+    /* =========================
+       HOME & UTILS
+       ========================= */
+    function loadHome(){
+      try {
+        const raw = localStorage.getItem('passenger_home');
+        if(raw) {
+          homeLocation = JSON.parse(raw);
+          drawHome();
+        }
+      } catch(e){}
+    }
 
-/* =========================
-   Notifications & buzzer
-   ========================= */
-async function ensureNotify(){
-  if(!('Notification' in window)) return false;
-  if(Notification.permission === 'granted') return true;
-  if(Notification.permission !== 'denied'){
-    const p = await Notification.requestPermission();
-    return p === 'granted';
-  }
-  return false;
-}
-document.getElementById('notifBtn').addEventListener('click', async ()=>{
-  const ok = await ensureNotify();
-  document.getElementById('notifBtn').textContent = ok ? 'Notifications ON' : 'Enable Notifications';
-  addLog('<small>Notification permission: '+ (ok? 'granted' : 'not granted') +'</small>');
-});
-function notifyUser(body, title='Bus Alert'){
-  ensureNotify().then((ok)=>{
-    if(ok) new Notification(title, { body });
-  });
-}
-function playBuzzer(){ try { buzzer.currentTime=0; buzzer.play(); } catch(e){} }
+    function drawHome(){
+      if(!homeLocation) return;
+      if(homeMarker) map.removeLayer(homeMarker);
+      
+      homeMarker = L.circleMarker([homeLocation.lat, homeLocation.lng], {
+        radius: 10, color: 'var(--primary)', fillColor: 'var(--primary-light)', fillOpacity: 0.8
+      }).addTo(map).bindPopup("Home");
+      
+      document.getElementById('homeInfo').textContent = `${homeLocation.lat.toFixed(4)}, ${homeLocation.lng.toFixed(4)}`;
+    }
 
-/* =========================
-   Search UI
-   ========================= */
-document.getElementById('searchBtn').addEventListener('click', ()=>{
-  const q = document.getElementById('searchInput').value.trim();
-  if(!q){ showAlert('Enter a Bus ID'); return; }
-  if(!socket || !socket.connected){ showAlert('Not connected to server'); return; }
-  selectedId = q;
-  document.getElementById('selectedId').textContent = q;
-  socket.emit('subscribe:driver', q);
-  if(markers.has(q)){ map.setView(markers.get(q).getLatLng(), 15); markers.get(q).openPopup(); updateSelectedUI(q); }
-  addLog(`<small>Subscribed to ${q}</small>`);
-});
+    document.getElementById('setHomeBtn').addEventListener('click', () => {
+      const c = map.getCenter();
+      homeLocation = { lat: c.lat, lng: c.lng };
+      localStorage.setItem('passenger_home', JSON.stringify(homeLocation));
+      drawHome();
+      showToast('Home location updated', 'success');
+      addLog('Home location set', 'info');
+    });
 
-/* =========================
-   Startup
-   ========================= */
-window.addEventListener('load', ()=>{
-  initMap();
-  loadHome();
-  connect();
-  ensureNotify().then(ok => { document.getElementById('notifBtn').textContent = ok ? 'Notifications ON' : 'Enable Notifications'; });
-  renderGauge(0);
-  // register service worker
-  if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('/sw.js').then(()=>console.log('sw registered')).catch(()=>{/*ignore*/});
-  }
-});
+    document.getElementById('goHomeBtn').addEventListener('click', () => {
+      if(homeLocation) map.flyTo([homeLocation.lat, homeLocation.lng], 16);
+      else showToast('Home not set', 'warning');
+    });
+    
+    document.getElementById('centerBtn').addEventListener('click', () => {
+        if(selectedId && markers.has(selectedId)) {
+            map.flyTo(markers.get(selectedId).getLatLng(), 16);
+        } else {
+            showToast('No bus selected', 'warning');
+        }
+    });
+
+    /* =========================
+       SEARCH
+       ========================= */
+    const searchInput = document.getElementById('searchInput');
+    const doSearch = () => {
+      const q = searchInput.value.trim();
+      if(!q) return;
+      
+      // If already known locally
+      if(markers.has(q)){
+        selectBus(q);
+      } else {
+        // Try to subscribe
+        socket.emit('subscribe:driver', q);
+        selectedId = q;
+        document.getElementById('selectedId').textContent = q + ' (Searching...)';
+        showToast(`Searching for ${q}...`, 'info');
+      }
+    };
+    document.getElementById('searchBtn').addEventListener('click', doSearch);
+    searchInput.addEventListener('keypress', (e) => { if(e.key==='Enter') doSearch(); });
+
+    /* =========================
+       HELPERS
+       ========================= */
+    function addLog(msg, type='info'){
+      const div = document.createElement('div');
+      div.className = `log-item ${type === 'alert' || type === 'danger' ? 'alert' : ''}`;
+      const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      div.innerHTML = `<span>${msg}</span> <span style="font-size:0.7em; color:var(--text-muted)">${time}</span>`;
+      logsEl.prepend(div);
+      if(logsEl.children.length > 50) logsEl.lastChild.remove();
+    }
+
+    function showToast(msg, type='info'){
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.style.borderLeftColor = `var(--${type})`;
+      t.innerHTML = `<span>${msg}</span>`;
+      document.getElementById('alertContainer').appendChild(t);
+      setTimeout(() => t.remove(), 4000);
+    }
+
+    function haversine(lat1, lon1, lat2, lon2){
+      const R = 6371000; 
+      const dLat = (lat2-lat1) * Math.PI/180;
+      const dLon = (lon2-lon1) * Math.PI/180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function playBuzzer(){
+      buzzer.currentTime = 0;
+      buzzer.play().catch(e => console.log("Audio block:", e));
+    }
+
+    /* =========================
+       NOTIFICATIONS
+       ========================= */
+    async function updateNotifBtn(){
+      if(!('Notification' in window)) {
+        document.getElementById('notifBtn').style.display='none';
+        return;
+      }
+      const p = Notification.permission;
+      const label = document.querySelector('#notifBtn .label');
+      if(p === 'granted') label.textContent = 'On';
+      else if(p === 'denied') label.textContent = 'Denied';
+      else label.textContent = 'Enable';
+    }
+
+    document.getElementById('notifBtn').addEventListener('click', async () => {
+      if(!('Notification' in window)) return;
+      const p = await Notification.requestPermission();
+      updateNotifBtn();
+      if(p === 'granted') showToast('Notifications Enabled', 'success');
+    });
+
+    function sendNotification(body){
+      if(Notification.permission === 'granted') new Notification('Bus Alert', { body, icon: 'icon-192.png' });
+    }
   </script>
 </body>
 </html>
-
