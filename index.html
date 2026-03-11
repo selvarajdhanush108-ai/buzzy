@@ -203,6 +203,7 @@
     }
     .btn-pill:active { transform: scale(0.96); background: var(--bg); }
     .btn-pill.primary { background: var(--primary); color: white; border: none; box-shadow: 0 2px 4px rgba(37,99,235,0.3); }
+    .btn-pill.full-width { width: 100%; justify-content: center; height: 44px; font-size: 15px; }
 
     /* Sidebar / Bottom Sheet */
     .sidebar {
@@ -277,8 +278,9 @@
       border-left: 3px solid var(--text-muted);
     }
     .log-item.alert { border-left-color: var(--danger); background: #fef2f2; }
+    .log-item.success { border-left-color: var(--success); background: #f0fdf4; }
 
-    /* Alert Toast */
+    /* Alert Toast (for minor logs) */
     .toast-container {
       position: fixed;
       top: 80px;
@@ -301,8 +303,48 @@
       margin-bottom: 10px;
       pointer-events: auto;
       animation: slideDown 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+      transition: opacity 0.3s;
     }
     @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Critical Alert Modal Overlay */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      display: none; /* Hidden by default */
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .modal-overlay.active { display: flex; opacity: 1; }
+    
+    .modal-content {
+      background: var(--surface);
+      padding: 24px;
+      border-radius: var(--radius-lg);
+      width: 90%;
+      max-width: 340px;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      transform: scale(0.9);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .modal-overlay.active .modal-content { transform: scale(1); }
+    
+    .modal-icon-wrapper {
+      width: 60px; height: 60px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px auto;
+    }
+    .modal-icon-wrapper.success { background: #dcfce7; color: var(--success); }
+    .modal-icon-wrapper.warning { background: #fef3c7; color: var(--warning); }
+    
+    .modal-title { font-size: 1.25rem; font-weight: 800; margin: 0 0 8px 0; color: var(--text-main); }
+    .modal-msg { font-size: 0.95rem; color: var(--text-muted); margin: 0 0 24px 0; line-height: 1.5; }
 
     /* Footer */
     .app-footer {
@@ -313,18 +355,21 @@
       padding-top: 20px;
     }
 
+    /* Screen flash animation for arrived state */
+    @keyframes flash-success {
+      0% { box-shadow: inset 0 0 0 0 var(--success); }
+      50% { box-shadow: inset 0 0 20px 5px rgba(34, 197, 94, 0.4); }
+      100% { box-shadow: inset 0 0 0 0 var(--success); }
+    }
+    body.arrived-flash {
+      animation: flash-success 1.5s ease-in-out 3;
+    }
+
     /* --- Responsive Logic --- */
     @media (max-width: 768px) {
-      /* Mobile Layout: Split vertical */
       .main-layout { flex-direction: column; }
-      
-      /* Header compact */
-      .brand span { display: none; } /* Hide text logo on small phones if needed, keeping mostly visible for now */
-      
-      /* Map takes roughly 60% */
+      .brand span { display: none; } 
       .map-section { flex: 6; min-height: 40%; }
-      
-      /* Sidebar takes remaining space, clean scroll */
       .sidebar {
         width: 100%;
         flex: 4;
@@ -332,12 +377,9 @@
         border-top: 1px solid var(--border);
         box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
       }
-      
       .sidebar-content { padding: 16px; gap: 12px; }
       .gauge-container { width: 100px; height: 100px; }
       .gauge-number { font-size: 1.5rem; }
-      
-      /* Adjust overlay controls position for thumb reachability */
       .map-overlay-bottom { bottom: 16px; right: 16px; }
     }
   </style>
@@ -372,6 +414,13 @@
 
         <!-- FABs -->
         <div class="map-overlay-bottom">
+          <!-- Toggle Fleet Visibility Button -->
+          <button id="toggleFleetBtn" class="btn-icon" title="Toggle Other Buses (Clear Map)">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
           <button id="layerBtn" class="btn-icon" title="Switch Layers">
             <svg class="icon" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
           </button>
@@ -438,14 +487,21 @@
       </aside>
     </div>
 
-    <!-- Alert Container -->
+    <!-- Alert Toast (Minor logs) -->
     <div id="alertContainer" class="toast-container"></div>
+    
+    <!-- Critical Alert Modal Overlay -->
+    <div id="alertModal" class="modal-overlay">
+      <div class="modal-content">
+        <div id="modalIconWrapper" class="modal-icon-wrapper success">
+          <svg id="modalIcon" class="icon" style="width: 32px; height: 32px;" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        </div>
+        <h2 id="modalTitle" class="modal-title">Alert</h2>
+        <p id="modalMessage" class="modal-msg">Message goes here.</p>
+        <button id="modalCloseBtn" class="btn-pill primary full-width">Dismiss Alarm</button>
+      </div>
+    </div>
   </div>
-
-  <!-- Audio -->
-  <audio id="buzzer" preload="auto">
-    <source src="buzzer.mp3" type="audio/mpeg">
-  </audio>
 
   <!-- External Libs -->
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
@@ -453,12 +509,11 @@
 
   <script>
     /* =========================
-       CONFIG
+       CONFIG & STATE
        ========================= */
     const DEFAULT_SERVER = 'https://buzzy-server-final.onrender.com';
-    const NOTIFY_DEBOUNCE_MS = 10 * 60 * 1000; // 10 mins
     const NEAR_RADIUS_M = 2000; // 2km Alert
-    const VERY_CLOSE_M = 150;    // 150m Buzzer
+    const VERY_CLOSE_M = 150;   // 150m Buzzer Alert
 
     // State
     let socket = null;
@@ -469,11 +524,19 @@
     let selectedId = null;
     let homeLocation = null;
     let homeMarker = null;
-    let notifiedAt = new Map();
+    let homeRadiusCircle = null;
+    
+    // Proximity tracker maps bus ID to states: 'far', 'near', 'arrived'
+    const busProximityState = new Map(); 
+    
+    // Audio Context State
+    let audioCtx = null;
+    let buzzerInterval = null;
+    
+    let showAllBuses = true; // Toggle flag to keep map clean
 
     // DOM Elements
     const logsEl = document.getElementById('logs');
-    const buzzer = document.getElementById('buzzer');
     const gaugeFill = document.getElementById('gaugeFill');
     const serverLabel = document.getElementById('serverAddress');
 
@@ -481,7 +544,7 @@
     serverLabel.textContent = new URL(DEFAULT_SERVER).hostname;
 
     /* =========================
-       INIT
+       INIT & AUDIO UNLOCK
        ========================= */
     window.addEventListener('load', () => {
       initMap();
@@ -497,15 +560,30 @@
       }
     });
 
+    // We initialize the AudioContext upon the first user interaction
+    // to comply with browser autoplay policies natively.
+    function initAudio() {
+        if (!audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        // Remove listeners once unlocked
+        document.removeEventListener('click', initAudio);
+        document.removeEventListener('touchstart', initAudio);
+    }
+    document.addEventListener('click', initAudio);
+    document.addEventListener('touchstart', initAudio);
+
     /* =========================
-       MAP
+       MAP & TOGGLE FLEET
        ========================= */
     function initMap(){
-      // Initialize map, remove default zoom control to use custom or gestures
       map = L.map('map', { zoomControl: false, attributionControl: false }).setView([12.9716, 77.5946], 13);
       L.control.attribution({position: 'bottomleft'}).addTo(map);
 
-      // Tile Layers
       tileLayers['osm'] = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'&copy; OSM' });
       tileLayers['sat'] = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, attribution:'&copy; Esri' });
       
@@ -523,10 +601,30 @@
           activeTile = 'osm';
         }
       });
-      
-      // Map Clicks
-      map.on('click', () => {
-         // Maybe clear selection if needed? For now we keep it.
+
+      // Toggle Fleet (Clear Map of Unselected Buses)
+      document.getElementById('toggleFleetBtn').addEventListener('click', (e) => {
+          showAllBuses = !showAllBuses;
+          const btn = e.currentTarget;
+          if (!showAllBuses) {
+              // Hide mode
+              btn.classList.add('active');
+              btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><path d="M1 1l22 22"></path><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path></svg>`; // Eye-off
+              
+              markers.forEach((m, id) => {
+                  if (id !== selectedId && map.hasLayer(m)) map.removeLayer(m);
+              });
+              showToast('Other buses cleared from map', 'info');
+          } else {
+              // Show mode
+              btn.classList.remove('active');
+              btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`; // Eye open
+              
+              markers.forEach((m, id) => {
+                  if (!map.hasLayer(m)) m.addTo(map);
+              });
+              showToast('Showing all tracked buses', 'info');
+          }
       });
     }
 
@@ -537,12 +635,11 @@
       socket = io(`${DEFAULT_SERVER}/passengers`, { transports:['websocket'] });
       
       socket.on('connect', () => addLog('Connected to Server', 'success'));
-      socket.on('disconnect', () => addLog('Disconnected', 'danger'));
+      socket.on('disconnect', () => addLog('Disconnected', 'alert'));
       
       socket.on('location:update', handleLocationUpdate);
       socket.on('fleet:init', (arr) => arr.forEach(handleLocationUpdate));
       
-      // Subscribe initial
       socket.emit('subscribe:fleet');
     }
 
@@ -555,64 +652,118 @@
 
       lastKnown.set(id, { id, lat, lng, speed, ts });
 
-      // Update Marker
       if(markers.has(id)){
         const m = markers.get(id);
-        const oldLatLng = m.getLatLng();
         m.setLatLng([lat, lng]);
+        m.setPopupContent(`<b>${id}</b><br>Speed: ${Math.round(speed)} km/h`);
         
-        // Smooth rotation if possible (optional enhancement not fully impl here)
-        m.setPopupContent(`<b>${id}</b><br>Speed: ${Math.round(speed)}`);
+        // Handle Map Visibility Based on Toggle
+        if (!showAllBuses && id !== selectedId) {
+            if (map.hasLayer(m)) map.removeLayer(m);
+        } else {
+            if (!map.hasLayer(m)) m.addTo(map);
+        }
       } else {
-        // Create Bus Icon
         const busIcon = L.divIcon({
           className: 'custom-bus-icon',
-          html: `<div style="background:#2563eb; width:24px; height:24px; border:2px solid white; border-radius:50%; box-shadow:0 3px 6px rgba(0,0,0,0.2);"></div>`,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12]
+          html: `<div style="background:var(--primary); width:32px; height:32px; border:2px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 6px rgba(0,0,0,0.3);">
+                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                     <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                     <line x1="2" y1="11" x2="22" y2="11"></line>
+                     <circle cx="7" cy="17" r="2"></circle>
+                     <circle cx="17" cy="17" r="2"></circle>
+                   </svg>
+                 </div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
         });
         
-        const m = L.marker([lat, lng], { icon: busIcon }).addTo(map).bindPopup(`<b>${id}</b>`);
+        const m = L.marker([lat, lng], { icon: busIcon }).bindPopup(`<b>${id}</b>`);
         m.on('click', () => selectBus(id));
         markers.set(id, m);
-        addLog(`Found ${id}`, 'info');
+        
+        // Only add visually if not hidden
+        if (showAllBuses || id === selectedId) {
+            m.addTo(map);
+        }
+        addLog(`Tracking started for ${id}`, 'info');
       }
 
-      // UI Update if Selected
       if(selectedId === id) updateDashboard(id);
 
-      // Proximity Logic
+      // We still check proximity in the background even if map icon is hidden
       checkProximity(id, lat, lng);
     }
+
+    /* =========================
+       PROXIMITY ALERTS (MODAL FIX)
+       ========================= */
+    function showModalAlert(title, message, type) {
+      const modal = document.getElementById('alertModal');
+      const iconWrapper = document.getElementById('modalIconWrapper');
+      const iconSvg = document.getElementById('modalIcon');
+      
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalMessage').textContent = message;
+      
+      if (type === 'success') {
+          iconWrapper.className = 'modal-icon-wrapper success';
+          iconSvg.innerHTML = '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>';
+      } else {
+          iconWrapper.className = 'modal-icon-wrapper warning';
+          iconSvg.innerHTML = '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>';
+      }
+      
+      modal.classList.add('active');
+      playBuzzer(); // Force play synthetic buzzer loop when modal appears
+    }
+
+    document.getElementById('modalCloseBtn').addEventListener('click', () => {
+      document.getElementById('alertModal').classList.remove('active');
+      stopBuzzer(); // Stop synthetic audio loop when dismissed
+    });
 
     function checkProximity(id, lat, lng){
       if(!homeLocation) return;
       
       const dist = haversine(homeLocation.lat, homeLocation.lng, lat, lng);
+      const currentState = busProximityState.get(id) || 'far';
       
-      // Near Alert
-      if(dist <= NEAR_RADIUS_M){
-        const last = notifiedAt.get(id) || 0;
-        if(Date.now() - last > NOTIFY_DEBOUNCE_MS){
-          notifiedAt.set(id, Date.now());
-          const msg = `${id} is ${Math.round(dist)}m away!`;
-          sendNotification(msg);
-          showToast(msg, 'warning');
-          addLog(msg, 'alert');
-        }
-      }
-
-      // Arrival Buzzer
-      if(dist <= VERY_CLOSE_M){
-        // Debounce buzzer specifically to avoid spamming every second
-        const last = notifiedAt.get(id + '_buzz') || 0;
-        if(Date.now() - last > 15000){ // 15 sec buzzer debounce
-          notifiedAt.set(id + '_buzz', Date.now());
-          playBuzzer();
-          const msg = `${id} has arrived!`;
-          showToast(msg, 'success');
+      // 1. Arrival Buzzer Logic (< 150m or literally 1 metre away)
+      if (dist <= VERY_CLOSE_M) {
+        if (currentState !== 'arrived') {
+          busProximityState.set(id, 'arrived');
+          
+          const msg = `${id} has arrived! (${Math.round(dist)}m away)`;
+          
+          showModalAlert('Bus Arrived!', msg, 'success');
           addLog(msg, 'success');
-          if(navigator.vibrate) navigator.vibrate([500, 200, 500]);
+          sendNotification(msg);
+          
+          document.body.classList.add('arrived-flash');
+          setTimeout(() => document.body.classList.remove('arrived-flash'), 4500);
+
+          if(navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 1000]);
+        }
+      } 
+      // 2. Near Alert Logic (< 2000m)
+      else if (dist <= NEAR_RADIUS_M) {
+        if (currentState === 'far') {
+          busProximityState.set(id, 'near');
+          const msg = `${id} entered the 2km radius! (${Math.round(dist)}m away)`;
+          
+          showModalAlert('Bus Approaching', msg, 'warning');
+          addLog(msg, 'alert');
+          sendNotification(msg);
+          
+          if(navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        }
+      } 
+      // 3. Reset state if it leaves proximity
+      else {
+        if (currentState !== 'far') {
+          busProximityState.set(id, 'far');
+          addLog(`${id} has left the proximity area.`, 'info');
         }
       }
     }
@@ -625,10 +776,11 @@
       document.getElementById('selectedId').textContent = id;
       updateDashboard(id);
       
-      // Auto-center once
       if(markers.has(id)){
-        map.flyTo(markers.get(id).getLatLng(), 15);
-        markers.get(id).openPopup();
+        const m = markers.get(id);
+        if(!map.hasLayer(m)) m.addTo(map); // Force show if hidden
+        map.flyTo(m.getLatLng(), 15);
+        m.openPopup();
       }
     }
 
@@ -636,28 +788,21 @@
       const data = lastKnown.get(id);
       if(!data) return;
 
-      // Speed Formatting (assuming m/s from server, convert to km/h)
-      // If server sends km/h already, adjust logic. Most GPS raw is m/s.
-      // Logic: if value < 40 likely m/s.
       let speedKmh = data.speed;
-      if(speedKmh < 40) speedKmh = speedKmh * 3.6; 
+      if(speedKmh < 40 && speedKmh > 0) speedKmh = speedKmh * 3.6; // crude check if m/s
       
       const val = Math.round(speedKmh);
       document.getElementById('speedVal').textContent = val;
       
-      // Update Gauge Ring
-      // Circumference = 2 * PI * 45 ≈ 283
-      const maxVal = 120; // max speed
+      const maxVal = 120; 
       const dash = 283;
       const offset = dash - (Math.min(val, maxVal) / maxVal) * dash;
       gaugeFill.style.strokeDashoffset = offset;
       
-      // Colorize gauge based on speed
       if(val > 80) gaugeFill.style.stroke = 'var(--danger)';
       else if(val > 50) gaugeFill.style.stroke = 'var(--warning)';
       else gaugeFill.style.stroke = 'var(--primary)';
 
-      // Distance
       if(homeLocation){
         const d = Math.round(haversine(homeLocation.lat, homeLocation.lng, data.lat, data.lng));
         document.getElementById('distanceToHome').innerHTML = `Distance: <b>${d} m</b>`;
@@ -665,7 +810,7 @@
     }
 
     /* =========================
-       HOME & UTILS
+       HOME SETTINGS
        ========================= */
     function loadHome(){
       try {
@@ -679,11 +824,32 @@
 
     function drawHome(){
       if(!homeLocation) return;
-      if(homeMarker) map.removeLayer(homeMarker);
       
-      homeMarker = L.circleMarker([homeLocation.lat, homeLocation.lng], {
-        radius: 10, color: 'var(--primary)', fillColor: 'var(--primary-light)', fillOpacity: 0.8
-      }).addTo(map).bindPopup("Home");
+      if(homeMarker) map.removeLayer(homeMarker);
+      if(homeRadiusCircle) map.removeLayer(homeRadiusCircle);
+      
+      homeRadiusCircle = L.circle([homeLocation.lat, homeLocation.lng], {
+        radius: NEAR_RADIUS_M,
+        color: 'var(--warning)',
+        fillColor: 'var(--warning)',
+        fillOpacity: 0.1,
+        weight: 2,
+        dashArray: '5, 8'
+      }).addTo(map);
+
+      const homeIcon = L.divIcon({
+        className: 'custom-home-icon',
+        html: `<div style="background:var(--success); width:32px; height:32px; border:2px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 6px rgba(0,0,0,0.3);">
+                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                   <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                   <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                 </svg>
+               </div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+
+      homeMarker = L.marker([homeLocation.lat, homeLocation.lng], { icon: homeIcon }).addTo(map).bindPopup("<b>My Home</b><br>2km alerting radius active.");
       
       document.getElementById('homeInfo').textContent = `${homeLocation.lat.toFixed(4)}, ${homeLocation.lng.toFixed(4)}`;
     }
@@ -693,13 +859,15 @@
       homeLocation = { lat: c.lat, lng: c.lng };
       localStorage.setItem('passenger_home', JSON.stringify(homeLocation));
       drawHome();
-      showToast('Home location updated', 'success');
-      addLog('Home location set', 'info');
+      showToast('Home location set to map center', 'success');
+      addLog('Home location updated', 'success');
+      
+      lastKnown.forEach(data => checkProximity(data.id, data.lat, data.lng));
     });
 
     document.getElementById('goHomeBtn').addEventListener('click', () => {
       if(homeLocation) map.flyTo([homeLocation.lat, homeLocation.lng], 16);
-      else showToast('Home not set', 'warning');
+      else showToast('Home location not set yet', 'warning');
     });
     
     document.getElementById('centerBtn').addEventListener('click', () => {
@@ -718,11 +886,9 @@
       const q = searchInput.value.trim();
       if(!q) return;
       
-      // If already known locally
       if(markers.has(q)){
         selectBus(q);
       } else {
-        // Try to subscribe
         socket.emit('subscribe:driver', q);
         selectedId = q;
         document.getElementById('selectedId').textContent = q + ' (Searching...)';
@@ -733,11 +899,11 @@
     searchInput.addEventListener('keypress', (e) => { if(e.key==='Enter') doSearch(); });
 
     /* =========================
-       HELPERS
+       HELPERS & ALERTS
        ========================= */
     function addLog(msg, type='info'){
       const div = document.createElement('div');
-      div.className = `log-item ${type === 'alert' || type === 'danger' ? 'alert' : ''}`;
+      div.className = `log-item ${type}`;
       const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       div.innerHTML = `<span>${msg}</span> <span style="font-size:0.7em; color:var(--text-muted)">${time}</span>`;
       logsEl.prepend(div);
@@ -750,7 +916,10 @@
       t.style.borderLeftColor = `var(--${type})`;
       t.innerHTML = `<span>${msg}</span>`;
       document.getElementById('alertContainer').appendChild(t);
-      setTimeout(() => t.remove(), 4000);
+      setTimeout(() => {
+          t.style.opacity = '0';
+          setTimeout(() => t.remove(), 300);
+      }, 4000);
     }
 
     function haversine(lat1, lon1, lat2, lon2){
@@ -761,9 +930,46 @@
       return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
+    /* --- SYNTHETIC WEB AUDIO BUZZER --- */
+    function playAlarmTone() {
+        if (!audioCtx) return;
+        
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        // Square wave generates a harsh, synthetic buzzer sound
+        osc.type = 'square'; 
+        
+        // Two-tone alternating pitch for an "alarm" feel
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime); 
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime + 0.2); 
+        
+        // Envelope to prevent clipping/clicking at the ends
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.01); // Quick fade in
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime + 0.4);           // Hold volume
+        gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.45);    // Quick fade out
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5); // Tone plays for 0.5s total
+    }
+
     function playBuzzer(){
-      buzzer.currentTime = 0;
-      buzzer.play().catch(e => console.log("Audio block:", e));
+        initAudio(); // Ensure context is ready
+        if (buzzerInterval) return; // Prevent overlapping loops
+        
+        playAlarmTone(); // Play first beep immediately
+        buzzerInterval = setInterval(playAlarmTone, 800); // Repeat every 800ms
+    }
+    
+    function stopBuzzer(){
+        if (buzzerInterval) {
+            clearInterval(buzzerInterval);
+            buzzerInterval = null;
+        }
     }
 
     /* =========================
@@ -785,11 +991,13 @@
       if(!('Notification' in window)) return;
       const p = await Notification.requestPermission();
       updateNotifBtn();
-      if(p === 'granted') showToast('Notifications Enabled', 'success');
+      if(p === 'granted') showToast('System Notifications Enabled', 'success');
     });
 
     function sendNotification(body){
-      if(Notification.permission === 'granted') new Notification('Bus Alert', { body, icon: 'icon-192.png' });
+      if(Notification.permission === 'granted') {
+          new Notification('Buzzy Alert', { body, icon: 'icon-192.png' });
+      }
     }
   </script>
 </body>
